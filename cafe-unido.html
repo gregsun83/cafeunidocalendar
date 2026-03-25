@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Café Unido — Events</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['"Playfair Display"', 'serif'],
+            body: ['"DM Sans"', 'sans-serif'],
+          },
+          colors: {
+            cream: '#FAF6EF', espresso: '#2C1A0E', caramel: '#C8813A',
+            latte: '#E8D5B7', bark: '#7A4D2A', fog: '#F2EDE4',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body { font-family:'DM Sans',sans-serif; background-color:#FAF6EF; color:#2C1A0E; }
+    h1,h2,h3 { font-family:'Playfair Display',serif; }
+
+    .grain::after { content:''; position:fixed; inset:0;
+      background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events:none; z-index:100; opacity:0.5; }
+
+    /* Language Toggle */
+    .lang-toggle { display:flex; align-items:center; gap:2px; background:#ffffff18; border:1px solid #ffffff28; border-radius:999px; padding:3px; }
+    .lang-btn { padding:5px 16px; border-radius:999px; font-size:0.75rem; font-weight:500; font-family:'DM Sans',sans-serif; letter-spacing:0.05em; cursor:pointer; transition:background 0.2s,color 0.2s; color:#E8D5B7; background:transparent; border:none; }
+    .lang-btn.active { background:#C8813A; color:#FAF6EF; }
+
+    /* Calendar */
+    .day-cell { min-height:80px; transition:background 0.2s ease,transform 0.15s ease; }
+    @media (max-width:640px) { .day-cell { min-height:56px; } }
+    .day-cell:hover { background-color:#F2EDE4; }
+    .day-cell.has-event:hover { background-color:#EEDFC8; transform:scale(1.02); cursor:pointer; }
+    .event-pill { display:block; font-size:0.65rem; line-height:1.2; padding:2px 5px; border-radius:4px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .today-ring { outline:2px solid #C8813A; outline-offset:-2px; border-radius:4px; }
+
+    /* Modal */
+    .modal-overlay { opacity:0; pointer-events:none; transition:opacity 0.25s ease; }
+    .modal-overlay.open { opacity:1; pointer-events:all; }
+    .modal-panel { transform:translateY(24px) scale(0.97); transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1),opacity 0.25s ease; opacity:0; }
+    .modal-overlay.open .modal-panel { transform:translateY(0) scale(1); opacity:1; }
+
+    /* Buttons */
+    .nav-btn { transition:background 0.18s,color 0.18s; }
+    .nav-btn:hover { background-color:#C8813A; color:#FAF6EF; }
+    .event-card { transition:box-shadow 0.2s,transform 0.2s; }
+    .event-card:hover { box-shadow:0 8px 32px rgba(44,26,14,0.10); transform:translateY(-3px); }
+
+    /* Form */
+    .rsvp-input { width:100%; background:#fff; border:1.5px solid #E8D5B7; border-radius:10px; padding:10px 14px; font-family:'DM Sans',sans-serif; font-size:0.875rem; color:#2C1A0E; outline:none; transition:border-color 0.2s,box-shadow 0.2s; }
+    .rsvp-input:focus { border-color:#C8813A; box-shadow:0 0 0 3px rgba(200,129,58,0.15); }
+    .rsvp-input.error { border-color:#dc2626; }
+    .rsvp-label { display:block; font-family:'DM Sans',sans-serif; font-size:0.7rem; font-weight:500; text-transform:uppercase; letter-spacing:0.08em; color:#7A4D2A; margin-bottom:5px; }
+    .rsvp-btn { background:#2C1A0E; color:#FAF6EF; border:none; border-radius:10px; padding:12px 20px; font-family:'DM Sans',sans-serif; font-size:0.875rem; font-weight:500; cursor:pointer; transition:background 0.2s,transform 0.15s; width:100%; }
+    .rsvp-btn:hover { background:#C8813A; transform:translateY(-1px); }
+    .rsvp-btn:active { transform:translateY(0); }
+    .rsvp-btn.secondary { background:transparent; color:#7A4D2A; border:1.5px solid #E8D5B7; }
+    .rsvp-btn.secondary:hover { background:#F2EDE4; color:#2C1A0E; }
+    .field-error { font-size:0.7rem; color:#dc2626; margin-top:3px; font-family:'DM Sans',sans-serif; }
+
+    /* Admin panel — slides in from right */
+    .admin-overlay { opacity:0; pointer-events:none; transition:opacity 0.3s ease; }
+    .admin-overlay.open { opacity:1; pointer-events:all; }
+    .admin-panel { transform:translateX(100%); transition:transform 0.35s cubic-bezier(0.4,0,0.2,1); }
+    .admin-overlay.open .admin-panel { transform:translateX(0); }
+    .admin-table th { font-size:0.65rem; text-transform:uppercase; letter-spacing:0.1em; color:#7A4D2A; padding:8px 12px; text-align:left; border-bottom:1px solid #E8D5B7; }
+    .admin-table td { font-size:0.8rem; padding:9px 12px; border-bottom:1px solid #F2EDE4; color:#2C1A0E; }
+    .admin-table tr:last-child td { border-bottom:none; }
+    .admin-table tr:hover td { background:#FAF6EF; }
+
+    /* Success anim */
+    @keyframes popIn { 0%{transform:scale(0.5);opacity:0;} 70%{transform:scale(1.15);} 100%{transform:scale(1);opacity:1;} }
+    .success-icon { animation:popIn 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-track { background:#FAF6EF; }
+    ::-webkit-scrollbar-thumb { background:#C8813A55; border-radius:10px; }
+  </style>
+</head>
+
+<body class="grain min-h-screen">
+
+<!-- ─── HEADER ──────────────────────────────────────────────── -->
+<header class="bg-espresso text-cream px-6 py-8 md:py-10 text-center relative overflow-hidden">
+  <div class="absolute inset-0 opacity-10" style="background:radial-gradient(ellipse at 60% 0%,#C8813A 0%,transparent 70%);"></div>
+
+  <!-- Language toggle -->
+  <div class="absolute top-4 right-4 z-10">
+    <div class="lang-toggle">
+      <button class="lang-btn active" id="btnEN" onclick="setLang('en')">EN</button>
+      <button class="lang-btn"        id="btnES" onclick="setLang('es')">ES</button>
+    </div>
+  </div>
+
+  <!-- Admin button (subtle) -->
+  <div class="absolute top-4 left-4 z-10">
+    <button onclick="openAdmin()" title="Admin Panel"
+      class="text-latte/20 hover:text-caramel/70 transition-colors font-body select-none"
+      style="font-size:0.6rem;letter-spacing:0.15em;">⚙ ADMIN</button>
+  </div>
+
+  <div class="relative z-10 max-w-3xl mx-auto">
+    <p class="text-caramel tracking-[0.25em] text-xs font-body uppercase mb-2">Est. 2018 · Panama City</p>
+    <h1 class="text-4xl md:text-5xl font-display font-semibold leading-tight">Café Unido</h1>
+    <p id="headerTagline" class="mt-3 text-latte/80 font-body text-sm md:text-base font-light max-w-md mx-auto"></p>
+    <div class="mt-4 flex justify-center gap-2 text-caramel text-xl">
+      <span>☕</span><span>🎭</span><span>🎮</span><span>🧩</span>
+    </div>
+  </div>
+</header>
+
+<!-- ─── CALENDAR ─────────────────────────────────────────────── -->
+<main class="max-w-5xl mx-auto px-4 py-10">
+  <div class="flex items-center justify-between mb-6">
+    <button id="prevBtn" class="nav-btn px-4 py-2 rounded-lg border border-espresso/20 text-espresso font-body text-sm font-medium">
+      ← <span id="prevLabel"></span>
+    </button>
+    <h2 id="monthTitle" class="font-display text-2xl md:text-3xl text-espresso font-semibold"></h2>
+    <button id="nextBtn" class="nav-btn px-4 py-2 rounded-lg border border-espresso/20 text-espresso font-body text-sm font-medium">
+      <span id="nextLabel"></span> →
+    </button>
+  </div>
+  <div id="dayLabels" class="grid grid-cols-7 mb-1"></div>
+  <div id="calendarGrid" class="grid grid-cols-7 border-l border-t border-espresso/10 rounded-xl overflow-hidden shadow-sm"></div>
+</main>
+
+<!-- ─── WHAT'S ON ─────────────────────────────────────────────── -->
+<section class="max-w-5xl mx-auto px-4 pb-16">
+  <div class="border-t border-espresso/10 pt-10">
+    <h2 id="whatsOnTitle" class="font-display text-2xl md:text-3xl text-espresso mb-2"></h2>
+    <p id="whatsOnSub" class="text-bark/60 font-body text-sm mb-8"></p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="eventTypeCards"></div>
+  </div>
+</section>
+
+<!-- ─── FOOTER ───────────────────────────────────────────────── -->
+<footer class="bg-espresso text-latte/60 text-center text-xs font-body py-6 px-4">
+  <p id="footerLine1"></p>
+  <p id="footerLine2" class="mt-1 text-caramel/60"></p>
+</footer>
+
+<!-- ─── RSVP MODAL ───────────────────────────────────────────── -->
+<div id="modalOverlay" class="modal-overlay fixed inset-0 bg-espresso/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+  <div class="modal-panel bg-cream rounded-2xl shadow-2xl max-w-lg w-full relative" style="max-height:92vh;overflow-y:auto;">
+    <button id="modalClose" class="absolute top-4 right-4 text-bark/40 hover:text-espresso transition-colors text-xl leading-none z-10">✕</button>
+    <div id="modalContent" class="p-7 md:p-8 relative"></div>
+  </div>
+</div>
+
+<!-- ─── ADMIN PANEL ──────────────────────────────────────────── -->
+<div id="adminOverlay" class="admin-overlay fixed inset-0 bg-espresso/50 backdrop-blur-sm z-50 flex justify-end">
+  <div class="admin-panel bg-cream w-full max-w-2xl h-full flex flex-col shadow-2xl">
+    <div class="bg-espresso text-cream px-6 py-5 flex items-center justify-between flex-shrink-0">
+      <div>
+        <h2 class="font-display text-xl font-semibold">Admin — RSVPs</h2>
+        <p id="adminSubtitle" class="text-latte/50 text-xs font-body mt-0.5"></p>
+      </div>
+      <div class="flex items-center gap-3">
+        <button onclick="exportCSV()" id="exportBtn"
+          class="text-xs font-body bg-caramel/20 hover:bg-caramel text-latte hover:text-cream transition-all px-3 py-1.5 rounded-lg border border-caramel/30"></button>
+        <button onclick="closeAdmin()" class="text-latte/50 hover:text-cream transition-colors text-xl leading-none">✕</button>
+      </div>
+    </div>
+    <div id="adminContent" class="flex-1 overflow-y-auto p-6"></div>
+  </div>
+</div>
+
+
+<!-- ════════════════════════════════════════════════════════════
+     ✏️  EDIT EVENTS HERE
+     ────────────────────────────────────────────────────────────
+     Each event has English (title/description) and Spanish
+     (titleES/descriptionES) versions. subtitle/subtitleES optional.
+     color options: caramel | bark | espresso
+════════════════════════════════════════════════════════════ -->
+<script>
+  const EVENTS = {
+    "2026-04-03": {
+      title:"Game Night: Meet & Play", titleES:"Noche de Juegos: Conoce y Juega",
+      description:"Board games, card games, and new friends. Bring your A-game — or just show up and learn.",
+      descriptionES:"Juegos de mesa, cartas y nuevos amigos. Ven a ganar o simplemente a aprender.",
+      icon:"🎲", color:"bark"
+    },
+    "2026-04-04": {
+      title:"Themed Trivia Night", titleES:"Trivia Temática",
+      subtitle:"90s Edition", subtitleES:"Edición 90s",
+      description:"All 90s everything — music, TV, pop culture, fashion. How well do you remember the decade?",
+      descriptionES:"Todo de los 90s — música, televisión, cultura pop y moda. ¿Cuánto recuerdas de esa época?",
+      icon:"📼", color:"espresso"
+    },
+    "2026-04-07": {
+      title:"Coffee & Connections", titleES:"Café & Conexiones",
+      description:"Casual networking with rotating conversations. Great for meeting new people in a relaxed setting.",
+      descriptionES:"Conversaciones rotativas en un ambiente relajado. Perfecto para conocer gente nueva.",
+      icon:"☕", color:"caramel"
+    },
+    "2026-04-10": {
+      title:"Singles Night", titleES:"Noche de Solteros",
+      description:"A fun, low-pressure evening to meet new people. Conversation starters provided. No awkward name tags.",
+      descriptionES:"Una noche divertida y sin presión para conocer personas nuevas. Temas de conversación incluidos. Sin gafetes incómodos.",
+      icon:"💛", color:"caramel"
+    },
+    "2026-04-11": {
+      title:"Comedy Night", titleES:"Noche de Comedia",
+      subtitle:"Clean", subtitleES:"Apta para todo público",
+      description:"Local comedians bring the laughs — totally clean, totally fun. Great for a night out with anyone.",
+      descriptionES:"Comediantes locales traen las risas — apta para todo público. Perfecta para salir con quien sea.",
+      icon:"😂", color:"bark"
+    },
+    "2026-04-14": {
+      title:"Coffee & Connections", titleES:"Café & Conexiones",
+      description:"Casual networking with rotating conversations. Great for meeting new people in a relaxed setting.",
+      descriptionES:"Conversaciones rotativas en un ambiente relajado. Perfecto para conocer gente nueva.",
+      icon:"☕", color:"caramel"
+    },
+    "2026-04-17": {
+      title:"Mario Kart Tournament", titleES:"Torneo de Mario Kart",
+      description:"Blue shells, banana peels, and serious competition. Prizes for the top 3 racers.",
+      descriptionES:"Caparazones azules, cáscaras de plátano y competencia seria. Premios para los 3 primeros.",
+      icon:"🏎️", color:"espresso"
+    },
+    "2026-04-18": {
+      title:"Murder Mystery Night", titleES:"Noche de Misterio",
+      description:"You're invited to a dinner party... and someone won't make it out alive. Whodunit?",
+      descriptionES:"Estás invitado a una cena... y alguien no saldrá vivo. ¿Quién lo hizo?",
+      icon:"🔍", color:"espresso"
+    },
+    "2026-04-21": {
+      title:"Trivia Night", titleES:"Noche de Trivia",
+      description:"General knowledge, pop culture, and a few curveballs. Teams of up to 4. Winner buys their next coffee.",
+      descriptionES:"Conocimiento general, cultura pop y sorpresas. Equipos de hasta 4 personas. El ganador invita el próximo café.",
+      icon:"🧠", color:"bark"
+    },
+    "2026-04-24": {
+      title:"Game Night: Meet & Play", titleES:"Noche de Juegos: Conoce y Juega",
+      description:"Board games, card games, and new friends. Bring your A-game — or just show up and learn.",
+      descriptionES:"Juegos de mesa, cartas y nuevos amigos. Ven a ganar o simplemente a aprender.",
+      icon:"🎲", color:"bark"
+    },
+    "2026-04-25": {
+      title:"Themed Trivia Night", titleES:"Trivia Temática",
+      subtitle:"Movies & Series", subtitleES:"Películas y Series",
+      description:"Lights, camera, trivia! Test your knowledge of film and TV across all genres and eras.",
+      descriptionES:"¡Luces, cámara, trivia! Pon a prueba tu conocimiento de cine y televisión.",
+      icon:"🎬", color:"espresso"
+    },
+    "2026-04-28": {
+      title:"Trivia Night", titleES:"Noche de Trivia",
+      description:"General knowledge, pop culture, and a few curveballs. Teams of up to 4. Winner buys their next coffee.",
+      descriptionES:"Conocimiento general, cultura pop y sorpresas. Equipos de hasta 4 personas. El ganador invita el próximo café.",
+      icon:"🧠", color:"bark"
+    },
+    // ── MAY 2026 — add below ─────────────────────────────────
+    // "2026-05-01": { title:"...", titleES:"...", description:"...", descriptionES:"...", icon:"☕", color:"caramel" },
+  };
+
+  const EVENT_TYPES = [
+    { title:"Coffee & Connections", titleES:"Café & Conexiones", icon:"☕",
+      desc:"Casual rotating conversations over great coffee. A low-key way to meet people you'd actually want to know.",
+      descES:"Conversaciones rotativas sobre un buen café. Una forma relajada de conocer gente interesante." },
+    { title:"Trivia Night", titleES:"Noche de Trivia", icon:"🧠",
+      desc:"Teams battle it out across random topics. Fun for regulars, welcoming to newcomers.",
+      descES:"Equipos compiten en temas variados. Divertido para habituales, bienvenido para nuevos." },
+    { title:"Themed Trivia Night", titleES:"Trivia Temática", icon:"🎭",
+      desc:"Same great trivia format, but with a specific theme — 90s, movies, music, and more.",
+      descES:"El mismo formato de trivia, con temática específica: 90s, películas, música y más." },
+    { title:"Game Night: Meet & Play", titleES:"Noche de Juegos", icon:"🎲",
+      desc:"Board games and card games with rotating partners. Perfect for solo visitors or small groups.",
+      descES:"Juegos de mesa y cartas con parejas rotativas. Perfecto para solos o grupos pequeños." },
+    { title:"Singles Night", titleES:"Noche de Solteros", icon:"💛",
+      desc:"Easy, no-pressure socializing for single folks. Good vibes, conversation prompts, and cold brew.",
+      descES:"Socialización sin presión para personas solteras. Buena vibra, temas de conversación y café frío." },
+    { title:"Mario Kart Tournament", titleES:"Torneo de Mario Kart", icon:"🏎️",
+      desc:"Competitive racing on the big screen. Blue shells are fair game. Prizes for the podium.",
+      descES:"Carreras competitivas en pantalla grande. Caparazones azules valen. Premios para el podio." },
+    { title:"Comedy Night", titleES:"Noche de Comedia", icon:"😂",
+      desc:"Local stand-up comedians, totally clean sets. Grab a drink and laugh.",
+      descES:"Comediantes locales de stand-up, apto para todo público. Pide algo y ríete." },
+    { title:"Murder Mystery Night", titleES:"Noche de Misterio", icon:"🔍",
+      desc:"Interactive mystery dinner. You play a character, read the clues, and solve the case.",
+      descES:"Cena de misterio interactiva. Juegas un personaje, lees las pistas y resuelves el caso." },
+  ];
+</script>
+
+<!-- ─── APP LOGIC ─────────────────────────────────────────────── -->
+<script>
+  // ── TRANSLATIONS ─────────────────────────────────────────────
+  const T = {
+    en: {
+      tagline:"Good coffee. Good company. Something happening every week.",
+      prev:"Prev", next:"Next",
+      days:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+      months:["January","February","March","April","May","June","July","August","September","October","November","December"],
+      whatsOnTitle:"What's On", whatsOnSub:"A quick look at our regular events — something for everyone.",
+      footerLine1:"© 2026 Café Unido · Panama City · All events subject to change",
+      footerLine2:"Made with ☕ and good taste",
+      doorsOpen:"Doors open 7:00 PM",
+      reserveBtn:"Reserve My Spot →", reserveSpot:"Reserve your spot",
+      rsvpCount:(n)=>`✓ ${n} person${n>1?'s':''} signed up`,
+      labelFirst:"First Name *", labelLast:"Last Name *",
+      labelPhone:"Phone Number *", labelEmail:"Email Address *",
+      phFirst:"Ana", phLast:"López",
+      confirmBtn:"Confirm My RSVP ✓", cancelBtn:"Cancel",
+      privacyNote:"Your info is only used to manage event attendance.",
+      errRequired:"Required", errPhone:"Please enter a valid phone number", errEmail:"Please enter a valid email address",
+      youreIn:(n)=>`You're in, ${n}!`, spotReserved:"Your spot is reserved.",
+      seeYou:"We'll have your name on the list. See you there!", doneBtn:"Done",
+      adminSubtitle:"Session RSVPs — resets on page refresh",
+      exportBtn:"⬇ Export CSV", noRsvps:"No RSVPs yet this session.",
+      adminDate:"Date", adminEvent:"Event", adminFirst:"First Name",
+      adminLast:"Last Name", adminPhone:"Phone", adminEmail:"Email",
+      adminTotal:(n)=>`${n} total RSVP${n!==1?'s':''}`,
+    },
+    es: {
+      tagline:"Buen café. Buena compañía. Algo pasa cada semana.",
+      prev:"Ant.", next:"Sig.",
+      days:['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'],
+      months:["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"],
+      whatsOnTitle:"Qué Hay", whatsOnSub:"Un vistazo rápido a nuestros eventos — algo para todos.",
+      footerLine1:"© 2026 Café Unido · Ciudad de Panamá · Los eventos están sujetos a cambios",
+      footerLine2:"Hecho con ☕ y buen gusto",
+      doorsOpen:"Puertas abren 7:00 PM",
+      reserveBtn:"Reservar mi lugar →", reserveSpot:"Reserva tu lugar",
+      rsvpCount:(n)=>`✓ ${n} persona${n>1?'s':''} registrada${n>1?'s':''}`,
+      labelFirst:"Nombre *", labelLast:"Apellido *",
+      labelPhone:"Teléfono *", labelEmail:"Correo electrónico *",
+      phFirst:"Ana", phLast:"López",
+      confirmBtn:"Confirmar RSVP ✓", cancelBtn:"Cancelar",
+      privacyNote:"Tu información solo se usa para gestionar la asistencia.",
+      errRequired:"Requerido", errPhone:"Ingresa un número de teléfono válido", errEmail:"Ingresa un correo electrónico válido",
+      youreIn:(n)=>`¡Ya estás dentro, ${n}!`, spotReserved:"Tu lugar está reservado.",
+      seeYou:"Tendremos tu nombre en la lista. ¡Nos vemos!", doneBtn:"Listo",
+      adminSubtitle:"RSVPs de esta sesión — se reinicia al recargar",
+      exportBtn:"⬇ Exportar CSV", noRsvps:"Aún no hay RSVPs esta sesión.",
+      adminDate:"Fecha", adminEvent:"Evento", adminFirst:"Nombre",
+      adminLast:"Apellido", adminPhone:"Teléfono", adminEmail:"Correo",
+      adminTotal:(n)=>`${n} RSVP${n!==1?'s':''} en total`,
+    }
+  };
+
+  // ── STATE ─────────────────────────────────────────────────────
+  let lang = 'en';
+  let currentYear = 2026, currentMonth = 3;
+  const today = new Date();
+  const RSVPS = {};
+
+  const COLOR_MAP = {
+    caramel:{ bg:"bg-caramel/15", text:"text-caramel", pill:"bg-caramel/20 text-bark", border:"border-caramel" },
+    bark:   { bg:"bg-bark/10",    text:"text-bark",    pill:"bg-bark/15 text-bark",    border:"border-bark" },
+    espresso:{ bg:"bg-espresso/10",text:"text-espresso",pill:"bg-espresso/15 text-espresso",border:"border-espresso" },
+  };
+
+  const tr = () => T[lang];
+  function padZ(n){ return String(n).padStart(2,'0'); }
+  function dateKey(y,m,d){ return `${y}-${padZ(m+1)}-${padZ(d)}`; }
+
+  // ── LANGUAGE ─────────────────────────────────────────────────
+  function setLang(l) {
+    lang = l;
+    document.getElementById('btnEN').classList.toggle('active', l==='en');
+    document.getElementById('btnES').classList.toggle('active', l==='es');
+    document.documentElement.lang = l;
+    updateStaticText();
+    renderCalendar();
+    renderEventTypes();
+  }
+
+  function updateStaticText() {
+    const t = tr();
+    document.getElementById('headerTagline').textContent = t.tagline;
+    document.getElementById('prevLabel').textContent     = t.prev;
+    document.getElementById('nextLabel').textContent     = t.next;
+    document.getElementById('whatsOnTitle').textContent  = t.whatsOnTitle;
+    document.getElementById('whatsOnSub').textContent    = t.whatsOnSub;
+    document.getElementById('footerLine1').textContent   = t.footerLine1;
+    document.getElementById('footerLine2').textContent   = t.footerLine2;
+    document.getElementById('adminSubtitle').textContent = t.adminSubtitle;
+    document.getElementById('exportBtn').textContent     = t.exportBtn;
+    const dl = document.getElementById('dayLabels');
+    dl.innerHTML = t.days.map(d =>
+      `<div class="text-center text-xs font-body font-medium text-bark/60 py-2 uppercase tracking-widest">${d}</div>`
+    ).join('');
+  }
+
+  // ── CALENDAR ─────────────────────────────────────────────────
+  function renderCalendar() {
+    const t = tr();
+    const grid = document.getElementById('calendarGrid');
+    document.getElementById('monthTitle').textContent = `${t.months[currentMonth]} ${currentYear}`;
+    grid.innerHTML = '';
+
+    const firstDay    = new Date(currentYear, currentMonth, 1).getDay();
+    const daysInMonth = new Date(currentYear, currentMonth+1, 0).getDate();
+
+    for (let i=0; i<firstDay; i++) {
+      const el = document.createElement('div');
+      el.className = 'day-cell border-r border-b border-espresso/10 bg-fog/40 p-1';
+      grid.appendChild(el);
+    }
+
+    for (let d=1; d<=daysInMonth; d++) {
+      const key = dateKey(currentYear, currentMonth, d);
+      const ev  = EVENTS[key];
+      const isToday = today.getFullYear()===currentYear && today.getMonth()===currentMonth && today.getDate()===d;
+
+      const el = document.createElement('div');
+      el.className = `day-cell border-r border-b border-espresso/10 p-1 md:p-2 ${ev?'has-event':''}`;
+      if (isToday) el.classList.add('today-ring');
+
+      const dayNum = document.createElement('span');
+      dayNum.className = `text-xs md:text-sm font-body font-medium ${isToday?'text-caramel font-semibold':'text-espresso/60'}`;
+      dayNum.textContent = d;
+      el.appendChild(dayNum);
+
+      if (ev) {
+        const c = COLOR_MAP[ev.color] || COLOR_MAP.caramel;
+        const pill = document.createElement('span');
+        pill.className = `event-pill ${c.pill}`;
+        pill.textContent = `${ev.icon||''} ${lang==='es'?(ev.titleES||ev.title):ev.title}`;
+        el.appendChild(pill);
+
+        const rsvpCount = (RSVPS[key]||[]).length;
+        if (rsvpCount > 0) {
+          const badge = document.createElement('span');
+          badge.className = 'block text-caramel font-body font-semibold mt-1';
+          badge.style.fontSize = '0.6rem';
+          badge.textContent = `✓ ${rsvpCount}`;
+          el.appendChild(badge);
+        }
+        el.addEventListener('click', () => openModal(key));
+      }
+      grid.appendChild(el);
+    }
+
+    const remainder = (firstDay + daysInMonth) % 7;
+    if (remainder !== 0) {
+      for (let i=0; i<7-remainder; i++) {
+        const el = document.createElement('div');
+        el.className = 'day-cell border-r border-b border-espresso/10 bg-fog/40 p-1';
+        grid.appendChild(el);
+      }
+    }
+  }
+
+  function renderEventTypes() {
+    document.getElementById('eventTypeCards').innerHTML = EVENT_TYPES.map(e => `
+      <div class="event-card bg-white/60 border border-espresso/10 rounded-xl p-5">
+        <div class="text-2xl mb-2">${e.icon}</div>
+        <h3 class="font-display text-base font-semibold text-espresso mb-1">${lang==='es'?(e.titleES||e.title):e.title}</h3>
+        <p class="text-xs font-body text-bark/70 leading-relaxed">${lang==='es'?(e.descES||e.desc):e.desc}</p>
+      </div>
+    `).join('');
+  }
+
+  // ── MODAL ────────────────────────────────────────────────────
+  function openModal(key) { showEventView(key); document.getElementById('modalOverlay').classList.add('open'); }
+  function closeModal()   { document.getElementById('modalOverlay').classList.remove('open'); }
+
+  function showEventView(key) {
+    const ev = EVENTS[key]; if (!ev) return;
+    const t = tr(), c = COLOR_MAP[ev.color]||COLOR_MAP.caramel;
+    const [y,m,d] = key.split('-');
+    const locale = lang==='es'?'es-PA':'en-US';
+    const formatted = new Date(+y,+m-1,+d).toLocaleDateString(locale,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    const rsvpList  = RSVPS[key]||[];
+    const evTitle   = lang==='es'?(ev.titleES||ev.title):ev.title;
+    const evSub     = lang==='es'?(ev.subtitleES||ev.subtitle):ev.subtitle;
+    const evDesc    = lang==='es'?(ev.descriptionES||ev.description):ev.description;
+
+    document.getElementById('modalContent').innerHTML = `
+      <div class="flex items-start gap-3 mb-4">
+        <span class="text-4xl">${ev.icon||'📅'}</span>
+        <div>
+          <p class="text-xs font-body text-bark/50 uppercase tracking-widest mb-1">${formatted}</p>
+          <h3 class="font-display text-xl md:text-2xl text-espresso leading-tight">${evTitle}</h3>
+          ${evSub?`<p class="text-sm font-body ${c.text} font-medium mt-0.5">${evSub}</p>`:''}
+        </div>
+      </div>
+      <div class="border-t border-espresso/10 pt-4 mb-4">
+        <p class="font-body text-bark text-sm leading-relaxed">${evDesc}</p>
+      </div>
+      <div class="p-3 rounded-xl ${c.bg} border ${c.border}/20 text-xs font-body ${c.text} mb-5">
+        📍 Café Unido · Panama City &nbsp;·&nbsp; ${t.doorsOpen}
+      </div>
+      ${rsvpList.length>0?`
+      <div class="mb-4 p-3 rounded-xl bg-white/70 border border-espresso/10 text-xs font-body text-bark/70">
+        <p class="font-medium text-bark mb-1">${t.rsvpCount(rsvpList.length)}</p>
+        <p class="text-bark/50">${rsvpList.map(r=>r.firstName).join(', ')}</p>
+      </div>`:''}
+      <button onclick="showFormView('${key}')" class="rsvp-btn">${t.reserveBtn}</button>
+    `;
+  }
+
+  function showFormView(key) {
+    const ev = EVENTS[key], t = tr(), c = COLOR_MAP[ev.color]||COLOR_MAP.caramel;
+    const evTitle = lang==='es'?(ev.titleES||ev.title):ev.title;
+
+    document.getElementById('modalContent').innerHTML = `
+      <div class="flex items-center gap-2 mb-5">
+        <button onclick="showEventView('${key}')" class="text-bark/40 hover:text-espresso transition-colors text-sm mr-1">←</button>
+        <span class="text-2xl">${ev.icon||'📅'}</span>
+        <div>
+          <p class="font-display text-lg text-espresso leading-tight">${evTitle}</p>
+          <p class="text-xs font-body ${c.text}">${t.reserveSpot}</p>
+        </div>
+      </div>
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="rsvp-label">${t.labelFirst}</label>
+            <input id="f_firstName" class="rsvp-input" type="text" placeholder="${t.phFirst}" autocomplete="given-name"/>
+            <p class="field-error hidden" id="e_firstName">${t.errRequired}</p>
+          </div>
+          <div>
+            <label class="rsvp-label">${t.labelLast}</label>
+            <input id="f_lastName" class="rsvp-input" type="text" placeholder="${t.phLast}" autocomplete="family-name"/>
+            <p class="field-error hidden" id="e_lastName">${t.errRequired}</p>
+          </div>
+        </div>
+        <div>
+          <label class="rsvp-label">${t.labelPhone}</label>
+          <input id="f_phone" class="rsvp-input" type="tel" placeholder="+507 6000 0000" autocomplete="tel"/>
+          <p class="field-error hidden" id="e_phone">${t.errPhone}</p>
+        </div>
+        <div>
+          <label class="rsvp-label">${t.labelEmail}</label>
+          <input id="f_email" class="rsvp-input" type="email" placeholder="ana@email.com" autocomplete="email"/>
+          <p class="field-error hidden" id="e_email">${t.errEmail}</p>
+        </div>
+      </div>
+      <div class="mt-6 flex flex-col gap-2">
+        <button onclick="submitRsvp('${key}')" class="rsvp-btn">${t.confirmBtn}</button>
+        <button onclick="showEventView('${key}')" class="rsvp-btn secondary">${t.cancelBtn}</button>
+      </div>
+      <p class="text-center text-bark/40 font-body mt-3" style="font-size:0.65rem;">${t.privacyNote}</p>
+    `;
+    document.getElementById('f_firstName').focus();
+  }
+
+  function submitRsvp(key) {
+    const t = tr();
+    const firstName = document.getElementById('f_firstName').value.trim();
+    const lastName  = document.getElementById('f_lastName').value.trim();
+    const phone     = document.getElementById('f_phone').value.trim();
+    const email     = document.getElementById('f_email').value.trim();
+    let valid = true;
+
+    function setErr(id, errId, cond) {
+      const inp = document.getElementById(id), err = document.getElementById(errId);
+      if (cond) { inp.classList.add('error'); err.classList.remove('hidden'); valid=false; }
+      else      { inp.classList.remove('error'); err.classList.add('hidden'); }
+    }
+    setErr('f_firstName','e_firstName',!firstName);
+    setErr('f_lastName', 'e_lastName', !lastName);
+    setErr('f_phone',    'e_phone',    !phone||phone.length<7);
+    setErr('f_email',    'e_email',    !email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    if (!valid) return;
+
+    if (!RSVPS[key]) RSVPS[key]=[];
+    const ev = EVENTS[key];
+    RSVPS[key].push({
+      firstName, lastName, phone, email,
+      eventTitle: ev.title, eventTitleES: ev.titleES||ev.title,
+      date: key, registeredAt: new Date().toLocaleString()
+    });
+    showConfirmView(key, firstName);
+    renderCalendar();
+  }
+
+  function showConfirmView(key, firstName) {
+    const ev = EVENTS[key], t = tr();
+    const [y,m,d] = key.split('-');
+    const locale = lang==='es'?'es-PA':'en-US';
+    const formatted = new Date(+y,+m-1,+d).toLocaleDateString(locale,{weekday:'long',month:'long',day:'numeric'});
+    const evTitle = lang==='es'?(ev.titleES||ev.title):ev.title;
+    const evSub   = lang==='es'?(ev.subtitleES||ev.subtitle):ev.subtitle;
+
+    document.getElementById('modalContent').innerHTML = `
+      <div class="text-center py-4">
+        <div class="success-icon text-5xl mb-4">🎉</div>
+        <h3 class="font-display text-2xl text-espresso mb-1">${t.youreIn(firstName)}</h3>
+        <p class="font-body text-bark/70 text-sm mb-4">${t.spotReserved}</p>
+        <div class="bg-white/60 border border-espresso/10 rounded-xl p-4 text-left mb-6">
+          <p class="text-xs font-body text-bark/50 uppercase tracking-widest mb-1">${formatted}</p>
+          <p class="font-display text-lg text-espresso">${ev.icon||''} ${evTitle}</p>
+          ${evSub?`<p class="text-xs font-body text-bark/60 mt-0.5">${evSub}</p>`:''}
+          <p class="text-xs font-body text-bark/50 mt-2">📍 Café Unido · ${t.doorsOpen}</p>
+        </div>
+        <p class="text-xs font-body text-bark/50 mb-5">${t.seeYou}</p>
+        <button onclick="closeModal()" class="rsvp-btn">${t.doneBtn}</button>
+      </div>
+    `;
+  }
+
+  // ── ADMIN ────────────────────────────────────────────────────
+  function openAdmin() { renderAdminPanel(); document.getElementById('adminOverlay').classList.add('open'); }
+  function closeAdmin(){ document.getElementById('adminOverlay').classList.remove('open'); }
+
+  function renderAdminPanel() {
+    const t = tr();
+    const content = document.getElementById('adminContent');
+    const allRsvps = Object.values(RSVPS).flat();
+    const total = allRsvps.length;
+
+    if (total === 0) {
+      content.innerHTML = `<div class="text-center py-20 text-bark/40 font-body text-sm">${t.noRsvps}</div>`;
+      return;
+    }
+
+    const grouped = Object.entries(RSVPS).filter(([,list])=>list.length>0).sort((a,b)=>a[0].localeCompare(b[0]));
+    let html = `<p class="text-xs font-body text-bark/50 mb-6 font-medium uppercase tracking-widest">${t.adminTotal(total)}</p>`;
+
+    grouped.forEach(([key, list]) => {
+      const ev = EVENTS[key];
+      const [y,m,d] = key.split('-');
+      const locale = lang==='es'?'es-PA':'en-US';
+      const formatted = new Date(+y,+m-1,+d).toLocaleDateString(locale,{weekday:'short',month:'short',day:'numeric'});
+      const evTitle = lang==='es'?(ev?.titleES||ev?.title||key):(ev?.title||key);
+
+      html += `
+        <div class="mb-7">
+          <div class="flex items-center gap-2 mb-3">
+            <span class="text-2xl">${ev?.icon||'📅'}</span>
+            <div>
+              <p class="font-display text-base font-semibold text-espresso">${evTitle}</p>
+              <p class="text-xs font-body text-bark/50">${formatted} · ${list.length} RSVP${list.length>1?'s':''}</p>
+            </div>
+          </div>
+          <div class="rounded-xl border border-espresso/10 overflow-hidden">
+            <table class="admin-table w-full">
+              <thead class="bg-fog">
+                <tr>
+                  <th>${t.adminFirst}</th>
+                  <th>${t.adminLast}</th>
+                  <th class="hidden sm:table-cell">${t.adminPhone}</th>
+                  <th class="hidden md:table-cell">${t.adminEmail}</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${list.map(r=>`
+                  <tr>
+                    <td class="font-medium">${r.firstName}</td>
+                    <td>${r.lastName}</td>
+                    <td class="hidden sm:table-cell text-bark/70">${r.phone}</td>
+                    <td class="hidden md:table-cell text-bark/70">${r.email}</td>
+                  </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    });
+
+    content.innerHTML = html;
+  }
+
+  function exportCSV() {
+    const t = tr();
+    const rows = [[t.adminDate, t.adminEvent, t.adminFirst, t.adminLast, t.adminPhone, t.adminEmail, "Registered At"]];
+    Object.entries(RSVPS).forEach(([key, list]) => {
+      const ev = EVENTS[key];
+      const evTitle = lang==='es'?(ev?.titleES||ev?.title||key):(ev?.title||key);
+      list.forEach(r => rows.push([key, evTitle, r.firstName, r.lastName, r.phone, r.email, r.registeredAt]));
+    });
+    const csv = rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href=url; a.download='cafe-unido-rsvps.csv'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ── LISTENERS ────────────────────────────────────────────────
+  document.getElementById('modalClose').addEventListener('click', closeModal);
+  document.getElementById('modalOverlay').addEventListener('click', e => {
+    if (e.target===document.getElementById('modalOverlay')) closeModal();
+  });
+  document.getElementById('adminOverlay').addEventListener('click', e => {
+    if (e.target===document.getElementById('adminOverlay')) closeAdmin();
+  });
+  document.getElementById('prevBtn').addEventListener('click', ()=>{
+    currentMonth--; if(currentMonth<0){currentMonth=11;currentYear--;} renderCalendar();
+  });
+  document.getElementById('nextBtn').addEventListener('click', ()=>{
+    currentMonth++; if(currentMonth>11){currentMonth=0;currentYear++;} renderCalendar();
+  });
+
+  // ── INIT ─────────────────────────────────────────────────────
+  updateStaticText();
+  renderCalendar();
+  renderEventTypes();
+</script>
+</body>
+</html>
