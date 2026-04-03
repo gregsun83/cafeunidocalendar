@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Café Unido — Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <!-- Supabase JS (must be loaded before our modules) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream:    #FAF6EF;
+      --espresso: #2C1A0E;
+      --caramel:  #C8813A;
+      --latte:    #E8D5B7;
+      --bark:     #7A4D2A;
+      --fog:      #F2EDE4;
+      --white:    #FFFFFF;
+      --red:      #dc2626;
+      --green:    #16a34a;
+    }
+
+    html, body { height: 100%; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--cream);
+      color: var(--espresso);
+      display: flex;
+      flex-direction: column;
+    }
+
+    h1, h2, h3, h4 { font-family: 'Playfair Display', serif; }
+
+    /* ── Loading bar ───────────────────────────────────────── */
+    #loadingBar {
+      position: fixed; top: 0; left: 0; height: 3px;
+      background: var(--caramel);
+      width: 0; transition: width 0.4s ease;
+      z-index: 9999;
+    }
+
+    /* ── Login overlay ─────────────────────────────────────── */
+    #loginOverlay {
+      position: fixed; inset: 0;
+      background: var(--espresso);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 500;
+      padding: 1rem;
+    }
+    #loginOverlay.hidden { display: none; }
+
+    .login-box {
+      background: var(--cream);
+      border-radius: 20px;
+      padding: 2.5rem 2rem;
+      width: 100%; max-width: 400px;
+      box-shadow: 0 32px 80px rgba(0,0,0,0.4);
+    }
+    .login-logo { text-align: center; margin-bottom: 1.5rem; }
+    .login-logo .icon { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; }
+    .login-logo h1 { font-size: 1.5rem; color: var(--espresso); }
+    .login-logo p { font-size: 0.75rem; color: var(--bark); margin-top: 0.25rem; letter-spacing: 0.1em; text-transform: uppercase; }
+
+    .form-field { margin-bottom: 1rem; }
+    .form-label {
+      display: block; font-size: 0.7rem; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--bark); margin-bottom: 5px;
+    }
+    .form-input {
+      width: 100%; background: var(--white);
+      border: 1.5px solid var(--latte); border-radius: 10px;
+      padding: 10px 14px; font-family: 'DM Sans', sans-serif;
+      font-size: 0.875rem; color: var(--espresso);
+      outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-input:focus { border-color: var(--caramel); box-shadow: 0 0 0 3px rgba(200,129,58,0.15); }
+    .form-input.error { border-color: var(--red); }
+
+    .btn-primary {
+      width: 100%; background: var(--espresso); color: var(--cream);
+      border: none; border-radius: 10px; padding: 12px 20px;
+      font-family: 'DM Sans', sans-serif; font-size: 0.875rem;
+      font-weight: 500; cursor: pointer;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .btn-primary:hover { background: var(--caramel); transform: translateY(-1px); }
+    .btn-primary:active { transform: translateY(0); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    #loginError {
+      color: var(--red); font-size: 0.75rem; margin-top: 0.75rem;
+      text-align: center; min-height: 1rem;
+    }
+
+    /* ── Shell ─────────────────────────────────────────────── */
+    #appShell { display: flex; flex-direction: column; height: 100%; }
+    #appShell.hidden { display: none; }
+
+    /* ── Top nav ───────────────────────────────────────────── */
+    .top-nav {
+      background: var(--espresso); color: var(--cream);
+      padding: 0 1.5rem; height: 60px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0; position: sticky; top: 0; z-index: 100;
+    }
+    .top-nav-left { display: flex; align-items: center; gap: 1rem; }
+    .top-nav-brand { font-family: 'Playfair Display', serif; font-size: 1.1rem; }
+    .top-nav-badge {
+      font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.15em;
+      background: rgba(200,129,58,0.25); color: var(--caramel);
+      padding: 3px 8px; border-radius: 999px; border: 1px solid rgba(200,129,58,0.3);
+    }
+    .top-nav-right { display: flex; align-items: center; gap: 0.75rem; }
+    #adminUserEmail { font-size: 0.75rem; color: rgba(232,213,183,0.6); }
+    .nav-icon-btn {
+      background: none; border: none; color: rgba(232,213,183,0.5);
+      cursor: pointer; font-size: 0.8rem; padding: 6px 10px;
+      border-radius: 8px; font-family: 'DM Sans', sans-serif;
+      transition: color 0.2s, background 0.2s;
+    }
+    .nav-icon-btn:hover { color: var(--cream); background: rgba(255,255,255,0.08); }
+
+    /* ── Sub-nav (tabs) ────────────────────────────────────── */
+    .sub-nav {
+      background: var(--fog); border-bottom: 1px solid rgba(44,26,14,0.1);
+      padding: 0 1.5rem;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-shrink: 0; gap: 0.75rem; flex-wrap: wrap;
+      min-height: 52px;
+    }
+    .tabs { display: flex; gap: 4px; }
+    .tab-btn {
+      font-family: 'DM Sans', sans-serif; font-size: 0.8rem; font-weight: 500;
+      padding: 8px 18px; border-radius: 8px; border: none;
+      background: transparent; color: var(--bark);
+      cursor: pointer; transition: background 0.2s, color 0.2s;
+      letter-spacing: 0.02em;
+    }
+    .tab-btn:hover { background: rgba(44,26,14,0.07); }
+    .tab-btn.tab-active { background: var(--espresso); color: var(--cream); }
+
+    .action-bar { display: flex; gap: 0.5rem; align-items: center; padding: 8px 0; }
+    .btn-action {
+      display: inline-flex; align-items: center; gap: 5px;
+      font-family: 'DM Sans', sans-serif; font-size: 0.75rem; font-weight: 500;
+      padding: 7px 14px; border-radius: 8px; border: 1px solid rgba(44,26,14,0.15);
+      background: var(--white); color: var(--espresso);
+      cursor: pointer; transition: background 0.2s, border-color 0.2s;
+    }
+    .btn-action:hover { background: var(--latte); }
+    .btn-action.primary { background: var(--espresso); color: var(--cream); border-color: transparent; }
+    .btn-action.primary:hover { background: var(--caramel); }
+
+    /* ── Main content ──────────────────────────────────────── */
+    #mainContent {
+      flex: 1; overflow-y: auto;
+      padding: 1.5rem;
+      max-width: 1100px; width: 100%; margin: 0 auto;
+    }
+
+    /* ── Stats row ─────────────────────────────────────────── */
+    .stats-row {
+      display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;
+    }
+    .stat-card {
+      background: var(--white); border: 1px solid rgba(44,26,14,0.08);
+      border-radius: 12px; padding: 1rem 1.5rem; min-width: 120px;
+    }
+    .stat-num { font-family: 'Playfair Display', serif; font-size: 2rem; color: var(--espresso); line-height: 1; }
+    .stat-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--bark); margin-top: 4px; }
+
+    /* ── RSVP Groups ───────────────────────────────────────── */
+    .rsvp-group { margin-bottom: 2rem; }
+    .group-header {
+      display: flex; align-items: center; gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    .group-icon { font-size: 1.75rem; }
+    .group-title { font-family: 'Playfair Display', serif; font-size: 1rem; font-weight: 600; color: var(--espresso); }
+    .group-meta { font-size: 0.72rem; color: var(--bark); margin-top: 2px; }
+
+    /* ── Table ─────────────────────────────────────────────── */
+    .table-wrap { border-radius: 12px; border: 1px solid rgba(44,26,14,0.1); overflow: hidden; overflow-x: auto; }
+    .data-table { width: 100%; border-collapse: collapse; }
+    .data-table thead { background: var(--fog); }
+    .data-table th {
+      font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em;
+      color: var(--bark); padding: 9px 14px; text-align: left;
+      border-bottom: 1px solid rgba(44,26,14,0.1); white-space: nowrap;
+    }
+    .data-table td {
+      font-size: 0.8rem; padding: 10px 14px;
+      border-bottom: 1px solid rgba(242,237,228,0.8); color: var(--espresso);
+    }
+    .data-table tbody tr:last-child td { border-bottom: none; }
+    .data-table tbody tr:hover td { background: var(--cream); }
+    .fw500 { font-weight: 500; }
+    .muted { color: var(--bark); }
+    .small { font-size: 0.72rem; }
+
+    /* ── Color badge ───────────────────────────────────────── */
+    .color-badge {
+      font-size: 0.65rem; padding: 2px 8px; border-radius: 999px;
+      text-transform: capitalize; font-weight: 500;
+    }
+    .color-caramel  { background: rgba(200,129,58,0.15); color: #8b5e26; }
+    .color-bark     { background: rgba(122,77,42,0.15);  color: #5c3418; }
+    .color-espresso { background: rgba(44,26,14,0.12);   color: var(--espresso); }
+
+    /* ── Action buttons (in table) ─────────────────────────── */
+    .action-btn {
+      font-size: 0.72rem; font-family: 'DM Sans', sans-serif;
+      padding: 4px 10px; border-radius: 6px; border: none; cursor: pointer;
+      transition: background 0.2s, color 0.2s; margin-right: 4px;
+    }
+    .edit-btn { background: rgba(44,26,14,0.08); color: var(--espresso); }
+    .edit-btn:hover { background: var(--espresso); color: var(--cream); }
+    .del-btn  { background: rgba(220,38,38,0.08); color: var(--red); }
+    .del-btn:hover  { background: var(--red); color: #fff; }
+
+    /* ── Empty state ───────────────────────────────────────── */
+    .empty-state { text-align: center; padding: 5rem 1rem; }
+    .empty-text { font-size: 0.9rem; color: var(--bark); }
+
+    /* ── Event Form Overlay ────────────────────────────────── */
+    .form-overlay {
+      position: fixed; inset: 0;
+      background: rgba(44,26,14,0.5); backdrop-filter: blur(4px);
+      z-index: 200; display: flex; align-items: center; justify-content: center;
+      padding: 1rem; opacity: 0; pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .form-overlay.open { opacity: 1; pointer-events: all; }
+    .form-panel {
+      background: var(--cream); border-radius: 20px;
+      width: 100%; max-width: 640px; max-height: 92vh;
+      overflow-y: auto; box-shadow: 0 32px 80px rgba(0,0,0,0.25);
+      transform: translateY(20px); opacity: 0;
+      transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1), opacity 0.25s ease;
+    }
+    .form-overlay.open .form-panel { transform: translateY(0); opacity: 1; }
+
+    .form-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1.25rem 1.5rem; border-bottom: 1px solid rgba(44,26,14,0.08);
+      position: sticky; top: 0; background: var(--cream); z-index: 1;
+    }
+    .form-header h2 { font-size: 1.2rem; color: var(--espresso); }
+    .close-btn {
+      background: none; border: none; color: rgba(122,77,42,0.5);
+      cursor: pointer; font-size: 1.2rem; line-height: 1;
+      transition: color 0.2s; padding: 4px;
+    }
+    .close-btn:hover { color: var(--espresso); }
+
+    .form-body { padding: 1.5rem; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 480px) { .form-grid { grid-template-columns: 1fr; } }
+    .form-field-full { grid-column: 1 / -1; }
+
+    .form-input-admin {
+      width: 100%; background: var(--white);
+      border: 1.5px solid var(--latte); border-radius: 10px;
+      padding: 9px 12px; font-family: 'DM Sans', sans-serif;
+      font-size: 0.85rem; color: var(--espresso);
+      outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .form-input-admin:focus { border-color: var(--caramel); box-shadow: 0 0 0 3px rgba(200,129,58,0.15); }
+    textarea.form-input-admin { resize: vertical; min-height: 80px; }
+    select.form-input-admin { cursor: pointer; }
+
+    .form-label-admin {
+      display: block; font-size: 0.68rem; font-weight: 500;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--bark); margin-bottom: 5px;
+    }
+
+    .form-footer {
+      padding: 1rem 1.5rem; border-top: 1px solid rgba(44,26,14,0.08);
+      display: flex; gap: 0.75rem; justify-content: flex-end;
+      position: sticky; bottom: 0; background: var(--cream);
+    }
+    .btn-save {
+      background: var(--espresso); color: var(--cream); border: none;
+      border-radius: 10px; padding: 10px 24px;
+      font-family: 'DM Sans', sans-serif; font-size: 0.875rem; font-weight: 500;
+      cursor: pointer; transition: background 0.2s;
+    }
+    .btn-save:hover { background: var(--caramel); }
+    .btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-cancel-form {
+      background: transparent; color: var(--bark);
+      border: 1.5px solid var(--latte); border-radius: 10px;
+      padding: 10px 20px; font-family: 'DM Sans', sans-serif;
+      font-size: 0.875rem; cursor: pointer; transition: background 0.2s;
+    }
+    .btn-cancel-form:hover { background: var(--fog); }
+
+    #formError { font-size: 0.75rem; color: var(--red); padding: 0 1.5rem 0.5rem; }
+
+    /* ── Scrollbar ─────────────────────────────────────────── */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--cream); }
+    ::-webkit-scrollbar-thumb { background: rgba(200,129,58,0.35); border-radius: 10px; }
+
+    /* ── Back link ─────────────────────────────────────────── */
+    .back-link {
+      font-size: 0.72rem; color: rgba(232,213,183,0.5);
+      text-decoration: none; transition: color 0.2s;
+    }
+    .back-link:hover { color: var(--latte); }
+  </style>
+</head>
+
+<body>
+  <!-- Loading bar -->
+  <div id="loadingBar"></div>
+
+  <!-- ─── Login Overlay ──────────────────────────────────── -->
+  <div id="loginOverlay">
+    <div class="login-box">
+      <div class="login-logo">
+        <span class="icon">☕</span>
+        <h1>Café Unido</h1>
+        <p>Admin Dashboard</p>
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="loginEmail">Email</label>
+        <input class="form-input" type="email" id="loginEmail" placeholder="admin@cafeunido.com" autocomplete="email" />
+      </div>
+      <div class="form-field">
+        <label class="form-label" for="loginPassword">Password</label>
+        <input class="form-input" type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password" />
+      </div>
+      <button class="btn-primary" id="loginBtn">Sign In →</button>
+      <p id="loginError"></p>
+    </div>
+  </div>
+
+  <!-- ─── App Shell (shown after login) ─────────────────── -->
+  <div id="appShell" class="hidden" style="display:flex;flex-direction:column;height:100%;">
+
+    <!-- Top nav -->
+    <nav class="top-nav">
+      <div class="top-nav-left">
+        <a href="index.html" class="back-link">← Back to site</a>
+        <span class="top-nav-brand">Café Unido</span>
+        <span class="top-nav-badge">Admin</span>
+      </div>
+      <div class="top-nav-right">
+        <span id="adminUserEmail"></span>
+        <button class="nav-icon-btn" id="btnSignOut">Sign out</button>
+      </div>
+    </nav>
+
+    <!-- Sub-nav -->
+    <div class="sub-nav">
+      <div class="tabs">
+        <button class="tab-btn tab-active" id="tabRsvps">📋 RSVPs</button>
+        <button class="tab-btn" id="tabEvents">📅 Events</button>
+      </div>
+      <div class="action-bar">
+        <button class="btn-action primary" id="btnNewEvent" style="display:none;">+ New Event</button>
+        <button class="btn-action" id="btnExportCSV">⬇ Export CSV</button>
+      </div>
+    </div>
+
+    <!-- Main content -->
+    <div id="mainContent"></div>
+  </div>
+
+  <!-- ─── Event Form Overlay ─────────────────────────────── -->
+  <div id="eventFormOverlay" class="form-overlay">
+    <div class="form-panel">
+      <div class="form-header">
+        <h2 id="formTitle">New Event</h2>
+        <button class="close-btn" id="eventFormClose">✕</button>
+      </div>
+      <form id="adminEventForm" novalidate>
+        <div class="form-body">
+          <div class="form-grid">
+            <!-- Date -->
+            <div class="form-field-full">
+              <label class="form-label-admin" for="formDate">Date (YYYY-MM-DD) *</label>
+              <input class="form-input-admin" type="date" id="formDate" name="date" required />
+            </div>
+            <!-- Title EN -->
+            <div>
+              <label class="form-label-admin" for="formTitle_en">Title — English *</label>
+              <input class="form-input-admin" type="text" id="formTitle_en" name="title" placeholder="Game Night" required />
+            </div>
+            <!-- Title ES -->
+            <div>
+              <label class="form-label-admin" for="formTitle_es">Title — Spanish</label>
+              <input class="form-input-admin" type="text" id="formTitle_es" name="title_es" placeholder="Noche de Juegos" />
+            </div>
+            <!-- Subtitle EN -->
+            <div>
+              <label class="form-label-admin" for="formSubtitle_en">Subtitle — English</label>
+              <input class="form-input-admin" type="text" id="formSubtitle_en" name="subtitle" placeholder="Optional subtitle" />
+            </div>
+            <!-- Subtitle ES -->
+            <div>
+              <label class="form-label-admin" for="formSubtitle_es">Subtitle — Spanish</label>
+              <input class="form-input-admin" type="text" id="formSubtitle_es" name="subtitle_es" placeholder="Subtítulo opcional" />
+            </div>
+            <!-- Description EN -->
+            <div class="form-field-full">
+              <label class="form-label-admin" for="formDesc_en">Description — English *</label>
+              <textarea class="form-input-admin" id="formDesc_en" name="description" rows="3" placeholder="Describe the event in English…" required></textarea>
+            </div>
+            <!-- Description ES -->
+            <div class="form-field-full">
+              <label class="form-label-admin" for="formDesc_es">Description — Spanish</label>
+              <textarea class="form-input-admin" id="formDesc_es" name="description_es" rows="3" placeholder="Descripción del evento en español…"></textarea>
+            </div>
+            <!-- Icon -->
+            <div>
+              <label class="form-label-admin" for="formIcon">Icon (emoji)</label>
+              <input class="form-input-admin" type="text" id="formIcon" name="icon" placeholder="📅" maxlength="4" />
+            </div>
+            <!-- Color -->
+            <div>
+              <label class="form-label-admin" for="formColor">Color</label>
+              <select class="form-input-admin" id="formColor" name="color">
+                <option value="caramel">Caramel</option>
+                <option value="bark">Bark</option>
+                <option value="espresso">Espresso</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <p id="formError"></p>
+        <div class="form-footer">
+          <button type="button" class="btn-cancel-form" id="cancelEventForm">Cancel</button>
+          <button type="submit" class="btn-save">Save Event</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ─── Scripts ────────────────────────────────────────── -->
+  <script type="module">
+    import sb from './js/supabaseClient.js';
+    import { signIn, signOut, getSession } from './js/auth.js';
+    import {
+      fetchEvents, createEvent, updateEvent, deleteEvent
+    } from './js/events.js';
+    import { fetchAllRsvps } from './js/rsvp.js';
+
+    // ── State ───────────────────────────────────────────────
+    let allEvents = [];
+    let allRsvps  = [];
+    let currentTab = 'rsvps';
+    let editingEventId = null;
+
+    // ── Boot ────────────────────────────────────────────────
+    async function boot() {
+      const session = await getSession();
+      if (session) {
+        showApp(session);
+      } else {
+        showLogin();
+      }
+    }
+
+    function showLogin() {
+      document.getElementById('loginOverlay').classList.remove('hidden');
+      document.getElementById('appShell').style.display = 'none';
+    }
+
+    function showApp(session) {
+      document.getElementById('loginOverlay').classList.add('hidden');
+      document.getElementById('appShell').style.display = 'flex';
+      document.getElementById('adminUserEmail').textContent = session.user.email;
+      initApp();
+    }
+
+    // ── Login form ──────────────────────────────────────────
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+      const email    = document.getElementById('loginEmail').value.trim();
+      const password = document.getElementById('loginPassword').value;
+      const errEl    = document.getElementById('loginError');
+      errEl.textContent = '';
+
+      if (!email || !password) {
+        errEl.textContent = 'Please enter your email and password.';
+        return;
+      }
+
+      const btn = document.getElementById('loginBtn');
+      btn.disabled = true; btn.textContent = 'Signing in…';
+
+      const { session, error } = await signIn(email, password);
+
+      btn.disabled = false; btn.textContent = 'Sign In →';
+
+      if (error) {
+        errEl.textContent = error.message ?? 'Login failed. Check credentials.';
+        return;
+      }
+      showApp(session);
+    });
+
+    // Allow Enter key on password field
+    document.getElementById('loginPassword').addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('loginBtn').click();
+    });
+
+    // ── App init ────────────────────────────────────────────
+    async function initApp() {
+      document.getElementById('btnSignOut').addEventListener('click', async () => {
+        await signOut();
+        showLogin();
+      });
+
+      document.getElementById('tabRsvps').addEventListener('click',  () => switchTab('rsvps'));
+      document.getElementById('tabEvents').addEventListener('click', () => switchTab('events'));
+      document.getElementById('btnNewEvent').addEventListener('click', () => openEventForm(null));
+      document.getElementById('btnExportCSV').addEventListener('click', exportCSV);
+      document.getElementById('eventFormClose').addEventListener('click', closeEventForm);
+      document.getElementById('cancelEventForm').addEventListener('click', closeEventForm);
+      document.getElementById('adminEventForm').addEventListener('submit', handleEventFormSubmit);
+      document.getElementById('eventFormOverlay').addEventListener('click', e => {
+        if (e.target === document.getElementById('eventFormOverlay')) closeEventForm();
+      });
+
+      await loadAll();
+      switchTab('rsvps');
+    }
+
+    async function loadAll() {
+      setLoading(true);
+      [allEvents, allRsvps] = await Promise.all([fetchEvents(), fetchAllRsvps()]);
+      setLoading(false);
+    }
+
+    function setLoading(on) {
+      const bar = document.getElementById('loadingBar');
+      bar.style.width = on ? '70%' : '100%';
+      if (!on) setTimeout(() => { bar.style.width = '0'; }, 400);
+    }
+
+    // ── Tabs ─────────────────────────────────────────────────
+    function switchTab(tab) {
+      currentTab = tab;
+      document.getElementById('tabRsvps').classList.toggle('tab-active',  tab === 'rsvps');
+      document.getElementById('tabEvents').classList.toggle('tab-active', tab === 'events');
+      document.getElementById('btnExportCSV').style.display = tab === 'rsvps'  ? 'inline-flex' : 'none';
+      document.getElementById('btnNewEvent').style.display  = tab === 'events' ? 'inline-flex' : 'none';
+      if (tab === 'rsvps')  renderRsvps();
+      if (tab === 'events') renderEventsTable();
+    }
+
+    // ── RSVPs tab ────────────────────────────────────────────
+    function renderRsvps() {
+      const container = document.getElementById('mainContent');
+      if (allRsvps.length === 0) {
+        container.innerHTML = `<div class="empty-state"><p style="font-size:3rem;margin-bottom:1rem">📋</p><p class="empty-text">No RSVPs yet.</p></div>`;
+        return;
+      }
+
+      const grouped = {};
+      allRsvps.forEach(r => {
+        const key = r.event_id;
+        if (!grouped[key]) grouped[key] = { event: r.events, list: [] };
+        grouped[key].list.push(r);
+      });
+
+      const sortedGroups = Object.values(grouped).sort((a,b) => {
+        return (a.event?.date ?? '9999').localeCompare(b.event?.date ?? '9999');
+      });
+
+      let html = `<div class="stats-row">
+        <div class="stat-card"><p class="stat-num">${allRsvps.length}</p><p class="stat-label">Total RSVPs</p></div>
+        <div class="stat-card"><p class="stat-num">${Object.keys(grouped).length}</p><p class="stat-label">Events with RSVPs</p></div>
+      </div>`;
+
+      sortedGroups.forEach(({ event, list }) => {
+        const evTitle = event?.title ?? 'Unknown Event';
+        const evDate  = event?.date  ?? '';
+        const evIcon  = event?.icon  ?? '📅';
+        const formatted = evDate
+          ? new Date(evDate + 'T12:00:00').toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric', year:'numeric' })
+          : '';
+
+        html += `
+        <div class="rsvp-group">
+          <div class="group-header">
+            <span class="group-icon">${evIcon}</span>
+            <div>
+              <p class="group-title">${esc(evTitle)}</p>
+              <p class="group-meta">${formatted} · <strong>${list.length}</strong> RSVP${list.length !== 1 ? 's' : ''}</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead><tr>
+                <th>First Name</th><th>Last Name</th>
+                <th>Phone</th><th>Email</th><th>Registered</th>
+              </tr></thead>
+              <tbody>
+                ${list.map(r => `<tr>
+                  <td class="fw500">${esc(r.first_name)}</td>
+                  <td>${esc(r.last_name)}</td>
+                  <td class="muted">${esc(r.phone)}</td>
+                  <td class="muted">${esc(r.email)}</td>
+                  <td class="muted small">${fmtDate(r.created_at)}</td>
+                </tr>`).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>`;
+      });
+
+      container.innerHTML = html;
+    }
+
+    // ── Events tab ───────────────────────────────────────────
+    function renderEventsTable() {
+      const container = document.getElementById('mainContent');
+      if (allEvents.length === 0) {
+        container.innerHTML = `<div class="empty-state"><p style="font-size:3rem;margin-bottom:1rem">📅</p><p class="empty-text">No events yet. Click <strong>+ New Event</strong> to create one.</p></div>`;
+        return;
+      }
+
+      container.innerHTML = `
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead><tr>
+              <th>Date</th><th>Icon</th><th>Title (EN)</th>
+              <th>Title (ES)</th><th>Color</th><th>Actions</th>
+            </tr></thead>
+            <tbody>
+              ${allEvents.map(ev => `<tr>
+                <td class="fw500">${ev.date}</td>
+                <td style="font-size:1.3rem;text-align:center">${ev.icon ?? '📅'}</td>
+                <td>${esc(ev.title)}</td>
+                <td class="muted">${esc(ev.title_es ?? '')}</td>
+                <td><span class="color-badge color-${ev.color ?? 'caramel'}">${ev.color ?? 'caramel'}</span></td>
+                <td>
+                  <button class="action-btn edit-btn" data-id="${ev.id}">Edit</button>
+                  <button class="action-btn del-btn"  data-id="${ev.id}" data-title="${esc(ev.title)}">Delete</button>
+                </td>
+              </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`;
+
+      container.querySelectorAll('.edit-btn').forEach(btn => {
+        btn.addEventListener('click', () => openEventForm(btn.dataset.id));
+      });
+      container.querySelectorAll('.del-btn').forEach(btn => {
+        btn.addEventListener('click', () => confirmDelete(btn.dataset.id, btn.dataset.title));
+      });
+    }
+
+    // ── Event form ───────────────────────────────────────────
+    function openEventForm(id) {
+      editingEventId = id;
+      const form    = document.getElementById('adminEventForm');
+      const overlay = document.getElementById('eventFormOverlay');
+      document.getElementById('formTitle').textContent = id ? 'Edit Event' : 'New Event';
+      document.getElementById('formError').textContent = '';
+      form.reset();
+
+      if (id) {
+        const ev = allEvents.find(e => e.id === id);
+        if (!ev) return;
+        form.date.value          = ev.date           ?? '';
+        form.title.value         = ev.title          ?? '';
+        form.title_es.value      = ev.title_es       ?? '';
+        form.subtitle.value      = ev.subtitle       ?? '';
+        form.subtitle_es.value   = ev.subtitle_es    ?? '';
+        form.description.value   = ev.description    ?? '';
+        form.description_es.value = ev.description_es ?? '';
+        form.icon.value          = ev.icon           ?? '📅';
+        form.color.value         = ev.color          ?? 'caramel';
+      }
+
+      overlay.classList.add('open');
+    }
+
+    function closeEventForm() {
+      document.getElementById('eventFormOverlay').classList.remove('open');
+      editingEventId = null;
+    }
+
+    async function handleEventFormSubmit(e) {
+      e.preventDefault();
+      const form  = e.target;
+      const errEl = document.getElementById('formError');
+      errEl.textContent = '';
+
+      const payload = {
+        date:           form.date.value.trim(),
+        title:          form.title.value.trim(),
+        title_es:       form.title_es.value.trim()        || null,
+        subtitle:       form.subtitle.value.trim()        || null,
+        subtitle_es:    form.subtitle_es.value.trim()     || null,
+        description:    form.description.value.trim(),
+        description_es: form.description_es.value.trim() || null,
+        icon:           form.icon.value.trim()            || '📅',
+        color:          form.color.value                  || 'caramel',
+      };
+
+      if (!payload.date || !payload.title || !payload.description) {
+        errEl.textContent = 'Date, English title, and English description are required.';
+        return;
+      }
+
+      const saveBtn = form.querySelector('button[type="submit"]');
+      saveBtn.disabled = true; saveBtn.textContent = 'Saving…';
+
+      const result = editingEventId
+        ? await updateEvent(editingEventId, payload)
+        : await createEvent(payload);
+
+      saveBtn.disabled = false; saveBtn.textContent = 'Save Event';
+
+      if (result.error) { errEl.textContent = result.error.message; return; }
+
+      closeEventForm();
+      await loadAll();
+      switchTab('events');
+    }
+
+    async function confirmDelete(id, title) {
+      if (!confirm(`Delete "${title}"?\n\nThis cannot be undone.`)) return;
+      const { error } = await deleteEvent(id);
+      if (error) { alert('Delete failed: ' + error.message); return; }
+      await loadAll();
+      switchTab('events');
+    }
+
+    // ── CSV export ───────────────────────────────────────────
+    function exportCSV() {
+      if (allRsvps.length === 0) { alert('No RSVPs to export.'); return; }
+      const headers = ['Date','Event','First Name','Last Name','Phone','Email','Registered At'];
+      const rows = allRsvps.map(r => [
+        r.events?.date  ?? '',
+        r.events?.title ?? '',
+        r.first_name, r.last_name, r.phone, r.email, r.created_at,
+      ]);
+      const csv = [headers, ...rows]
+        .map(row => row.map(v => `"${String(v ?? '').replace(/"/g,'""')}"`).join(','))
+        .join('\n');
+      const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `cafe-unido-rsvps-${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ── Helpers ──────────────────────────────────────────────
+    function esc(str) {
+      return String(str ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+    function fmtDate(iso) {
+      if (!iso) return '';
+      return new Date(iso).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'numeric', minute:'2-digit' });
+    }
+
+    // ── Start ────────────────────────────────────────────────
+    boot();
+  </script>
+</body>
+</html>

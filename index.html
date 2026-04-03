@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Café Unido — Events</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <!-- Supabase JS (must be loaded before our modules) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['"Playfair Display"', 'serif'],
+            body:    ['"DM Sans"', 'sans-serif'],
+          },
+          colors: {
+            cream:    '#FAF6EF',
+            espresso: '#2C1A0E',
+            caramel:  '#C8813A',
+            latte:    '#E8D5B7',
+            bark:     '#7A4D2A',
+            fog:      '#F2EDE4',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body { font-family:'DM Sans',sans-serif; background-color:#FAF6EF; color:#2C1A0E; }
+    h1,h2,h3 { font-family:'Playfair Display',serif; }
+
+    .grain::after {
+      content:''; position:fixed; inset:0;
+      background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events:none; z-index:100; opacity:0.5;
+    }
+
+    .lang-toggle { display:flex; align-items:center; gap:2px; background:#ffffff18; border:1px solid #ffffff28; border-radius:999px; padding:3px; }
+    .lang-btn { padding:5px 16px; border-radius:999px; font-size:0.75rem; font-weight:500; font-family:'DM Sans',sans-serif; letter-spacing:0.05em; cursor:pointer; transition:background 0.2s,color 0.2s; color:#E8D5B7; background:transparent; border:none; }
+    .lang-btn.active { background:#C8813A; color:#FAF6EF; }
+
+    .day-cell { min-height:80px; transition:background 0.2s ease,transform 0.15s ease; }
+    @media (max-width:640px) { .day-cell { min-height:56px; } }
+    .day-cell:hover { background-color:#F2EDE4; }
+    .day-cell.has-event:hover { background-color:#EEDFC8; transform:scale(1.02); cursor:pointer; }
+    .event-pill { display:block; font-size:0.65rem; line-height:1.2; padding:2px 5px; border-radius:4px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .today-ring { outline:2px solid #C8813A; outline-offset:-2px; border-radius:4px; }
+
+    .modal-overlay { opacity:0; pointer-events:none; transition:opacity 0.25s ease; }
+    .modal-overlay.open { opacity:1; pointer-events:all; }
+    .modal-panel { transform:translateY(24px) scale(0.97); transition:transform 0.3s cubic-bezier(0.34,1.56,0.64,1),opacity 0.25s ease; opacity:0; }
+    .modal-overlay.open .modal-panel { transform:translateY(0) scale(1); opacity:1; }
+
+    .nav-btn { transition:background 0.18s,color 0.18s; }
+    .nav-btn:hover { background-color:#C8813A; color:#FAF6EF; }
+    .event-card { transition:box-shadow 0.2s,transform 0.2s; }
+    .event-card:hover { box-shadow:0 8px 32px rgba(44,26,14,0.10); transform:translateY(-3px); }
+
+    .rsvp-input { width:100%; background:#fff; border:1.5px solid #E8D5B7; border-radius:10px; padding:10px 14px; font-family:'DM Sans',sans-serif; font-size:0.875rem; color:#2C1A0E; outline:none; transition:border-color 0.2s,box-shadow 0.2s; }
+    .rsvp-input:focus { border-color:#C8813A; box-shadow:0 0 0 3px rgba(200,129,58,0.15); }
+    .rsvp-input.error { border-color:#dc2626; }
+    .rsvp-label { display:block; font-family:'DM Sans',sans-serif; font-size:0.7rem; font-weight:500; text-transform:uppercase; letter-spacing:0.08em; color:#7A4D2A; margin-bottom:5px; }
+    .rsvp-btn { background:#2C1A0E; color:#FAF6EF; border:none; border-radius:10px; padding:12px 20px; font-family:'DM Sans',sans-serif; font-size:0.875rem; font-weight:500; cursor:pointer; transition:background 0.2s,transform 0.15s; width:100%; }
+    .rsvp-btn:hover { background:#C8813A; transform:translateY(-1px); }
+    .rsvp-btn:active { transform:translateY(0); }
+    .rsvp-btn.secondary { background:transparent; color:#7A4D2A; border:1.5px solid #E8D5B7; }
+    .rsvp-btn.secondary:hover { background:#F2EDE4; color:#2C1A0E; }
+    .rsvp-btn:disabled { opacity:0.5; cursor:not-allowed; transform:none; }
+    .field-error { font-size:0.7rem; color:#dc2626; margin-top:3px; font-family:'DM Sans',sans-serif; }
+
+    @keyframes popIn { 0%{transform:scale(0.5);opacity:0;} 70%{transform:scale(1.15);} 100%{transform:scale(1);opacity:1;} }
+    .success-icon { animation:popIn 0.45s cubic-bezier(0.34,1.56,0.64,1) forwards; }
+
+    /* Loading skeleton */
+    .skeleton { background: linear-gradient(90deg, #E8D5B7 25%, #F2EDE4 50%, #E8D5B7 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; }
+    @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
+
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-track { background:#FAF6EF; }
+    ::-webkit-scrollbar-thumb { background:#C8813A55; border-radius:10px; }
+  </style>
+</head>
+
+<body class="grain min-h-screen">
+
+<!-- ─── HEADER ─────────────────────────────────────────────── -->
+<header class="bg-espresso text-cream px-6 py-8 md:py-10 text-center relative overflow-hidden">
+  <div class="absolute inset-0 opacity-10" style="background:radial-gradient(ellipse at 60% 0%,#C8813A 0%,transparent 70%);"></div>
+
+  <div class="absolute top-4 right-4 z-10">
+    <div class="lang-toggle">
+      <button class="lang-btn active" id="btnEN" onclick="setLang('en')">EN</button>
+      <button class="lang-btn"        id="btnES" onclick="setLang('es')">ES</button>
+    </div>
+  </div>
+
+  <!-- Subtle admin link -->
+  <div class="absolute top-4 left-4 z-10">
+    <a href="admin.html"
+      class="text-latte/20 hover:text-caramel/70 transition-colors font-body select-none"
+      style="font-size:0.6rem;letter-spacing:0.15em;text-decoration:none;">⚙ ADMIN</a>
+  </div>
+
+  <div class="relative z-10 max-w-3xl mx-auto">
+    <p class="text-caramel tracking-[0.25em] text-xs font-body uppercase mb-2">Est. 2018 · Panama City</p>
+    <h1 class="text-4xl md:text-5xl font-display font-semibold leading-tight">Café Unido</h1>
+    <p id="headerTagline" class="mt-3 text-latte/80 font-body text-sm md:text-base font-light max-w-md mx-auto"></p>
+    <div class="mt-4 flex justify-center gap-2 text-caramel text-xl">
+      <span>☕</span><span>🎭</span><span>🎮</span><span>🧩</span>
+    </div>
+  </div>
+</header>
+
+<!-- ─── CALENDAR ────────────────────────────────────────────── -->
+<main class="max-w-5xl mx-auto px-4 py-10">
+  <div class="flex items-center justify-between mb-6">
+    <button id="prevBtn" class="nav-btn px-4 py-2 rounded-lg border border-espresso/20 text-espresso font-body text-sm font-medium">
+      ← <span id="prevLabel"></span>
+    </button>
+    <h2 id="monthTitle" class="font-display text-2xl md:text-3xl text-espresso font-semibold"></h2>
+    <button id="nextBtn" class="nav-btn px-4 py-2 rounded-lg border border-espresso/20 text-espresso font-body text-sm font-medium">
+      <span id="nextLabel"></span> →
+    </button>
+  </div>
+  <div id="dayLabels" class="grid grid-cols-7 mb-1"></div>
+  <div id="calendarGrid" class="grid grid-cols-7 border-l border-t border-espresso/10 rounded-xl overflow-hidden shadow-sm">
+    <!-- Skeleton while loading -->
+    <div id="calendarSkeleton" class="col-span-7 py-24 text-center text-bark/30 font-body text-sm">Loading events…</div>
+  </div>
+</main>
+
+<!-- ─── WHAT'S ON ────────────────────────────────────────────── -->
+<section class="max-w-5xl mx-auto px-4 pb-16">
+  <div class="border-t border-espresso/10 pt-10">
+    <h2 id="whatsOnTitle" class="font-display text-2xl md:text-3xl text-espresso mb-2"></h2>
+    <p id="whatsOnSub" class="text-bark/60 font-body text-sm mb-8"></p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="eventTypeCards"></div>
+  </div>
+</section>
+
+<!-- ─── FOOTER ───────────────────────────────────────────────── -->
+<footer class="bg-espresso text-latte/60 text-center text-xs font-body py-6 px-4">
+  <p id="footerLine1"></p>
+  <p id="footerLine2" class="mt-1 text-caramel/60"></p>
+</footer>
+
+<!-- ─── RSVP MODAL ───────────────────────────────────────────── -->
+<div id="modalOverlay" class="modal-overlay fixed inset-0 bg-espresso/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
+  <div class="modal-panel bg-cream rounded-2xl shadow-2xl max-w-lg w-full relative" style="max-height:92vh;overflow-y:auto;">
+    <button id="modalClose" class="absolute top-4 right-4 text-bark/40 hover:text-espresso transition-colors text-xl leading-none z-10">✕</button>
+    <div id="modalContent" class="p-7 md:p-8 relative"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════
+     EVENT TYPE CARDS (static — no Supabase needed)
+════════════════════════════════════════════════════════════ -->
+<script>
+const EVENT_TYPES = [
+  { title:"Coffee & Connections", titleES:"Café & Conexiones", icon:"☕",
+    desc:"Casual rotating conversations over great coffee. A low-key way to meet people you'd actually want to know.",
+    descES:"Conversaciones rotativas sobre un buen café. Una forma relajada de conocer gente interesante." },
+  { title:"Trivia Night", titleES:"Noche de Trivia", icon:"🧠",
+    desc:"Teams battle it out across random topics. Fun for regulars, welcoming to newcomers.",
+    descES:"Equipos compiten en temas variados. Divertido para habituales, bienvenido para nuevos." },
+  { title:"Themed Trivia Night", titleES:"Trivia Temática", icon:"🎭",
+    desc:"Same great trivia format, but with a specific theme — 90s, movies, music, and more.",
+    descES:"El mismo formato de trivia, con temática específica: 90s, películas, música y más." },
+  { title:"Game Night: Meet & Play", titleES:"Noche de Juegos", icon:"🎲",
+    desc:"Board games and card games with rotating partners. Perfect for solo visitors or small groups.",
+    descES:"Juegos de mesa y cartas con parejas rotativas. Perfecto para solos o grupos pequeños." },
+  { title:"Singles Night", titleES:"Noche de Solteros", icon:"💛",
+    desc:"Easy, no-pressure socializing for single folks. Good vibes, conversation prompts, and cold brew.",
+    descES:"Socialización sin presión para personas solteras. Buena vibra, temas de conversación y café frío." },
+  { title:"Mario Kart Tournament", titleES:"Torneo de Mario Kart", icon:"🏎️",
+    desc:"Competitive racing on the big screen. Blue shells are fair game. Prizes for the podium.",
+    descES:"Carreras competitivas en pantalla grande. Caparazones azules valen. Premios para el podio." },
+  { title:"Comedy Night", titleES:"Noche de Comedia", icon:"😂",
+    desc:"Local stand-up comedians, totally clean sets. Grab a drink and laugh.",
+    descES:"Comediantes locales de stand-up, apto para todo público. Pide algo y ríete." },
+  { title:"Murder Mystery Night", titleES:"Noche de Misterio", icon:"🔍",
+    desc:"Interactive mystery dinner. You play a character, read the clues, and solve the case.",
+    descES:"Cena de misterio interactiva. Juegas un personaje, lees las pistas y resuelves el caso." },
+];
+</script>
+
+<!-- ─── APP LOGIC (ES module) ────────────────────────────────── -->
+<script type="module">
+  // ── Imports ────────────────────────────────────────────────
+  import sb from './js/supabaseClient.js';
+  import { fetchEventsForMonth, eventsArrayToMap } from './js/events.js';
+  import { submitRsvp as submitRsvpToDb, fetchRsvpCounts } from './js/rsvp.js';
+
+  // ── Translations ───────────────────────────────────────────
+  const T = {
+    en: {
+      tagline:"Good coffee. Good company. Something happening every week.",
+      prev:"Prev", next:"Next",
+      days:['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],
+      months:["January","February","March","April","May","June","July","August","September","October","November","December"],
+      whatsOnTitle:"What's On", whatsOnSub:"A quick look at our regular events — something for everyone.",
+      footerLine1:"© 2026 Café Unido · Panama City · All events subject to change",
+      footerLine2:"Made with ☕ and good taste",
+      doorsOpen:"Doors open 7:00 PM",
+      reserveBtn:"Reserve My Spot →", reserveSpot:"Reserve your spot",
+      rsvpCount:(n)=>`✓ ${n} person${n>1?'s':''} signed up`,
+      labelFirst:"First Name *", labelLast:"Last Name *",
+      labelPhone:"Phone Number *", labelEmail:"Email Address *",
+      phFirst:"Ana", phLast:"López",
+      confirmBtn:"Confirm My RSVP ✓", cancelBtn:"Cancel",
+      privacyNote:"Your info is only used to manage event attendance.",
+      errRequired:"Required", errPhone:"Please enter a valid phone number", errEmail:"Please enter a valid email address",
+      youreIn:(n)=>`You're in, ${n}!`, spotReserved:"Your spot is reserved.",
+      seeYou:"We'll have your name on the list. See you there!", doneBtn:"Done",
+      submitting:"Submitting…", submitError:"Something went wrong. Please try again.",
+    },
+    es: {
+      tagline:"Buen café. Buena compañía. Algo pasa cada semana.",
+      prev:"Ant.", next:"Sig.",
+      days:['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'],
+      months:["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"],
+      whatsOnTitle:"Qué Hay", whatsOnSub:"Un vistazo rápido a nuestros eventos — algo para todos.",
+      footerLine1:"© 2026 Café Unido · Ciudad de Panamá · Los eventos están sujetos a cambios",
+      footerLine2:"Hecho con ☕ y buen gusto",
+      doorsOpen:"Puertas abren 7:00 PM",
+      reserveBtn:"Reservar mi lugar →", reserveSpot:"Reserva tu lugar",
+      rsvpCount:(n)=>`✓ ${n} persona${n>1?'s':''} registrada${n>1?'s':''}`,
+      labelFirst:"Nombre *", labelLast:"Apellido *",
+      labelPhone:"Teléfono *", labelEmail:"Correo electrónico *",
+      phFirst:"Ana", phLast:"López",
+      confirmBtn:"Confirmar RSVP ✓", cancelBtn:"Cancelar",
+      privacyNote:"Tu información solo se usa para gestionar la asistencia.",
+      errRequired:"Requerido", errPhone:"Ingresa un número de teléfono válido", errEmail:"Ingresa un correo electrónico válido",
+      youreIn:(n)=>`¡Ya estás dentro, ${n}!`, spotReserved:"Tu lugar está reservado.",
+      seeYou:"Tendremos tu nombre en la lista. ¡Nos vemos!", doneBtn:"Listo",
+      submitting:"Enviando…", submitError:"Algo salió mal. Por favor intenta de nuevo.",
+    }
+  };
+
+  // ── State ──────────────────────────────────────────────────
+  let lang = 'en';
+  let currentYear  = 2026;
+  let currentMonth = 3; // April (0-indexed)
+  const today = new Date();
+
+  // Events & RSVP counts cache (keyed by YYYY-MM)
+  const eventsCache = {};
+  const rsvpCache   = {};
+
+  const COLOR_MAP = {
+    caramel:  { bg:"bg-caramel/15",  text:"text-caramel",  pill:"bg-caramel/20 text-bark",    border:"border-caramel" },
+    bark:     { bg:"bg-bark/10",     text:"text-bark",     pill:"bg-bark/15 text-bark",        border:"border-bark" },
+    espresso: { bg:"bg-espresso/10", text:"text-espresso", pill:"bg-espresso/15 text-espresso",border:"border-espresso" },
+  };
+
+  const tr  = () => T[lang];
+  const pad = n  => String(n).padStart(2,'0');
+  const monthKey = (y, m) => `${y}-${pad(m+1)}`;
+
+  // ── Language ───────────────────────────────────────────────
+  window.setLang = function(l) {
+    lang = l;
+    document.getElementById('btnEN').classList.toggle('active', l==='en');
+    document.getElementById('btnES').classList.toggle('active', l==='es');
+    document.documentElement.lang = l;
+    updateStaticText();
+    renderCalendar();
+    renderEventTypes();
+  };
+
+  function updateStaticText() {
+    const t = tr();
+    document.getElementById('headerTagline').textContent = t.tagline;
+    document.getElementById('prevLabel').textContent     = t.prev;
+    document.getElementById('nextLabel').textContent     = t.next;
+    document.getElementById('whatsOnTitle').textContent  = t.whatsOnTitle;
+    document.getElementById('whatsOnSub').textContent    = t.whatsOnSub;
+    document.getElementById('footerLine1').textContent   = t.footerLine1;
+    document.getElementById('footerLine2').textContent   = t.footerLine2;
+    const dl = document.getElementById('dayLabels');
+    dl.innerHTML = t.days.map(d =>
+      `<div class="text-center text-xs font-body font-medium text-bark/60 py-2 uppercase tracking-widest">${d}</div>`
+    ).join('');
+  }
+
+  // ── Data Loading ───────────────────────────────────────────
+  async function getEventsForMonth(year, month) {
+    const key = monthKey(year, month);
+    if (!eventsCache[key]) {
+      const rows = await fetchEventsForMonth(key);
+      eventsCache[key] = eventsArrayToMap(rows);
+    }
+    return eventsCache[key];
+  }
+
+  async function getRsvpCountsForEvents(eventsMap) {
+    const ids = Object.values(eventsMap).map(e => e.id).filter(Boolean);
+    if (ids.length === 0) return {};
+    const counts = await fetchRsvpCounts(ids);
+    // Re-key by date for easy lookup
+    const byDate = {};
+    Object.entries(eventsMap).forEach(([date, ev]) => {
+      if (ev.id) byDate[date] = counts[ev.id] ?? 0;
+    });
+    return byDate;
+  }
+
+  // ── Calendar ───────────────────────────────────────────────
+  async function renderCalendar() {
+    const t    = tr();
+    const grid = document.getElementById('calendarGrid');
+    document.getElementById('monthTitle').textContent = `${t.months[currentMonth]} ${currentYear}`;
+    grid.innerHTML = '<div class="col-span-7 py-24 text-center text-bark/30 font-body text-sm">Loading…</div>';
+
+    const [eventsMap, rsvpsByDate] = await Promise.all([
+      getEventsForMonth(currentYear, currentMonth),
+      getEventsForMonth(currentYear, currentMonth).then(m => getRsvpCountsForEvents(m)),
+    ]);
+
+    grid.innerHTML = '';
+
+    const firstDay    = new Date(currentYear, currentMonth, 1).getDay();
+    const daysInMonth = new Date(currentYear, currentMonth+1, 0).getDate();
+
+    // Empty cells before 1st
+    for (let i=0; i<firstDay; i++) {
+      const el = document.createElement('div');
+      el.className = 'day-cell border-r border-b border-espresso/10 bg-fog/40 p-1';
+      grid.appendChild(el);
+    }
+
+    for (let d=1; d<=daysInMonth; d++) {
+      const key = `${currentYear}-${pad(currentMonth+1)}-${pad(d)}`;
+      const ev  = eventsMap[key];
+      const isToday = today.getFullYear()===currentYear && today.getMonth()===currentMonth && today.getDate()===d;
+
+      const el = document.createElement('div');
+      el.className = `day-cell border-r border-b border-espresso/10 p-1 md:p-2 ${ev?'has-event':''}`;
+      if (isToday) el.classList.add('today-ring');
+
+      const dayNum = document.createElement('span');
+      dayNum.className = `text-xs md:text-sm font-body font-medium ${isToday?'text-caramel font-semibold':'text-espresso/60'}`;
+      dayNum.textContent = d;
+      el.appendChild(dayNum);
+
+      if (ev) {
+        const c    = COLOR_MAP[ev.color] || COLOR_MAP.caramel;
+        const pill = document.createElement('span');
+        pill.className = `event-pill ${c.pill}`;
+        pill.textContent = `${ev.icon||''} ${lang==='es'?(ev.titleES||ev.title):ev.title}`;
+        el.appendChild(pill);
+
+        const count = rsvpsByDate[key] ?? 0;
+        if (count > 0) {
+          const badge = document.createElement('span');
+          badge.className = 'block text-caramel font-body font-semibold mt-1';
+          badge.style.fontSize = '0.6rem';
+          badge.textContent = `✓ ${count}`;
+          el.appendChild(badge);
+        }
+        el.addEventListener('click', () => openModal(key, eventsMap));
+      }
+      grid.appendChild(el);
+    }
+
+    // Trailing empty cells
+    const remainder = (firstDay + daysInMonth) % 7;
+    if (remainder !== 0) {
+      for (let i=0; i<7-remainder; i++) {
+        const el = document.createElement('div');
+        el.className = 'day-cell border-r border-b border-espresso/10 bg-fog/40 p-1';
+        grid.appendChild(el);
+      }
+    }
+  }
+
+  function renderEventTypes() {
+    document.getElementById('eventTypeCards').innerHTML = EVENT_TYPES.map(e => `
+      <div class="event-card bg-white/60 border border-espresso/10 rounded-xl p-5">
+        <div class="text-2xl mb-2">${e.icon}</div>
+        <h3 class="font-display text-base font-semibold text-espresso mb-1">${lang==='es'?(e.titleES||e.title):e.title}</h3>
+        <p class="text-xs font-body text-bark/70 leading-relaxed">${lang==='es'?(e.descES||e.desc):e.desc}</p>
+      </div>
+    `).join('');
+  }
+
+  // ── Modal ──────────────────────────────────────────────────
+  let _currentEventsMap = {};
+
+  function openModal(key, eventsMap) {
+    _currentEventsMap = eventsMap;
+    showEventView(key);
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+  function closeModal() {
+    document.getElementById('modalOverlay').classList.remove('open');
+  }
+
+  async function showEventView(key) {
+    const ev = _currentEventsMap[key]; if (!ev) return;
+    const t  = tr(), c = COLOR_MAP[ev.color]||COLOR_MAP.caramel;
+    const [y,m,d] = key.split('-');
+    const locale    = lang==='es'?'es-PA':'en-US';
+    const formatted = new Date(+y,+m-1,+d).toLocaleDateString(locale,{weekday:'long',month:'long',day:'numeric',year:'numeric'});
+    const evTitle   = lang==='es'?(ev.titleES||ev.title):ev.title;
+    const evSub     = lang==='es'?(ev.subtitleES||ev.subtitle):ev.subtitle;
+    const evDesc    = lang==='es'?(ev.descriptionES||ev.description):ev.description;
+
+    // Fetch live RSVP count
+    let rsvpCount = 0;
+    if (ev.id) {
+      const counts = await fetchRsvpCounts([ev.id]);
+      rsvpCount = counts[ev.id] ?? 0;
+    }
+
+    document.getElementById('modalContent').innerHTML = `
+      <div class="flex items-start gap-3 mb-4">
+        <span class="text-4xl">${ev.icon||'📅'}</span>
+        <div>
+          <p class="text-xs font-body text-bark/50 uppercase tracking-widest mb-1">${formatted}</p>
+          <h3 class="font-display text-xl md:text-2xl text-espresso leading-tight">${evTitle}</h3>
+          ${evSub?`<p class="text-sm font-body ${c.text} font-medium mt-0.5">${evSub}</p>`:''}
+        </div>
+      </div>
+      <div class="border-t border-espresso/10 pt-4 mb-4">
+        <p class="font-body text-bark text-sm leading-relaxed">${evDesc}</p>
+      </div>
+      <div class="p-3 rounded-xl ${c.bg} border ${c.border}/20 text-xs font-body ${c.text} mb-5">
+        📍 Café Unido · Panama City &nbsp;·&nbsp; ${t.doorsOpen}
+      </div>
+      ${rsvpCount>0?`
+      <div class="mb-4 p-3 rounded-xl bg-white/70 border border-espresso/10 text-xs font-body text-bark/70">
+        <p class="font-medium text-bark">${t.rsvpCount(rsvpCount)}</p>
+      </div>`:''}
+      <button id="openFormBtn" class="rsvp-btn">${t.reserveBtn}</button>
+    `;
+    document.getElementById('openFormBtn').addEventListener('click', () => showFormView(key));
+  }
+
+  function showFormView(key) {
+    const ev = _currentEventsMap[key], t = tr(), c = COLOR_MAP[ev.color]||COLOR_MAP.caramel;
+    const evTitle = lang==='es'?(ev.titleES||ev.title):ev.title;
+
+    document.getElementById('modalContent').innerHTML = `
+      <div class="flex items-center gap-2 mb-5">
+        <button id="backBtn" class="text-bark/40 hover:text-espresso transition-colors text-sm mr-1">←</button>
+        <span class="text-2xl">${ev.icon||'📅'}</span>
+        <div>
+          <p class="font-display text-lg text-espresso leading-tight">${evTitle}</p>
+          <p class="text-xs font-body ${c.text}">${t.reserveSpot}</p>
+        </div>
+      </div>
+      <div class="space-y-4">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="rsvp-label">${t.labelFirst}</label>
+            <input id="f_firstName" class="rsvp-input" type="text" placeholder="${t.phFirst}" autocomplete="given-name"/>
+            <p class="field-error hidden" id="e_firstName">${t.errRequired}</p>
+          </div>
+          <div>
+            <label class="rsvp-label">${t.labelLast}</label>
+            <input id="f_lastName" class="rsvp-input" type="text" placeholder="${t.phLast}" autocomplete="family-name"/>
+            <p class="field-error hidden" id="e_lastName">${t.errRequired}</p>
+          </div>
+        </div>
+        <div>
+          <label class="rsvp-label">${t.labelPhone}</label>
+          <input id="f_phone" class="rsvp-input" type="tel" placeholder="+507 6000 0000" autocomplete="tel"/>
+          <p class="field-error hidden" id="e_phone">${t.errPhone}</p>
+        </div>
+        <div>
+          <label class="rsvp-label">${t.labelEmail}</label>
+          <input id="f_email" class="rsvp-input" type="email" placeholder="ana@email.com" autocomplete="email"/>
+          <p class="field-error hidden" id="e_email">${t.errEmail}</p>
+        </div>
+        <p id="submitErrorMsg" class="text-xs text-red-600 hidden font-body"></p>
+      </div>
+      <div class="mt-6 flex flex-col gap-2">
+        <button id="confirmRsvpBtn" class="rsvp-btn">${t.confirmBtn}</button>
+        <button id="cancelRsvpBtn" class="rsvp-btn secondary">${t.cancelBtn}</button>
+      </div>
+      <p class="text-center text-bark/40 font-body mt-3" style="font-size:0.65rem;">${t.privacyNote}</p>
+    `;
+
+    document.getElementById('backBtn').addEventListener('click', () => showEventView(key));
+    document.getElementById('cancelRsvpBtn').addEventListener('click', () => showEventView(key));
+    document.getElementById('confirmRsvpBtn').addEventListener('click', () => handleRsvpSubmit(key));
+    document.getElementById('f_firstName').focus();
+  }
+
+  async function handleRsvpSubmit(key) {
+    const t         = tr();
+    const firstName = document.getElementById('f_firstName').value.trim();
+    const lastName  = document.getElementById('f_lastName').value.trim();
+    const phone     = document.getElementById('f_phone').value.trim();
+    const email     = document.getElementById('f_email').value.trim();
+    let valid = true;
+
+    function setErr(id, errId, cond) {
+      const inp = document.getElementById(id), err = document.getElementById(errId);
+      if (cond) { inp.classList.add('error'); err.classList.remove('hidden'); valid=false; }
+      else      { inp.classList.remove('error'); err.classList.add('hidden'); }
+    }
+    setErr('f_firstName','e_firstName',!firstName);
+    setErr('f_lastName', 'e_lastName', !lastName);
+    setErr('f_phone',    'e_phone',    !phone||phone.length<7);
+    setErr('f_email',    'e_email',    !email||!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+    if (!valid) return;
+
+    const ev = _currentEventsMap[key];
+    if (!ev?.id) {
+      document.getElementById('submitErrorMsg').textContent = 'Event not found. Please refresh.';
+      document.getElementById('submitErrorMsg').classList.remove('hidden');
+      return;
+    }
+
+    const btn = document.getElementById('confirmRsvpBtn');
+    btn.disabled = true;
+    btn.textContent = t.submitting;
+
+    const { data, error } = await submitRsvpToDb({
+      first_name: firstName,
+      last_name:  lastName,
+      phone,
+      email,
+      event_id: ev.id,
+    });
+
+    if (error) {
+      btn.disabled = false;
+      btn.textContent = t.confirmBtn;
+      const errEl = document.getElementById('submitErrorMsg');
+      errEl.textContent = t.submitError;
+      errEl.classList.remove('hidden');
+      return;
+    }
+
+    // Bust caches so counts refresh
+    delete eventsCache[monthKey(currentYear, currentMonth)];
+
+    showConfirmView(key, firstName);
+  }
+
+  function showConfirmView(key, firstName) {
+    const ev = _currentEventsMap[key], t = tr();
+    const [y,m,d] = key.split('-');
+    const locale    = lang==='es'?'es-PA':'en-US';
+    const formatted = new Date(+y,+m-1,+d).toLocaleDateString(locale,{weekday:'long',month:'long',day:'numeric'});
+    const evTitle   = lang==='es'?(ev.titleES||ev.title):ev.title;
+    const evSub     = lang==='es'?(ev.subtitleES||ev.subtitle):ev.subtitle;
+
+    document.getElementById('modalContent').innerHTML = `
+      <div class="text-center py-4">
+        <div class="success-icon text-5xl mb-4">🎉</div>
+        <h3 class="font-display text-2xl text-espresso mb-1">${t.youreIn(firstName)}</h3>
+        <p class="font-body text-bark/70 text-sm mb-4">${t.spotReserved}</p>
+        <div class="bg-white/60 border border-espresso/10 rounded-xl p-4 text-left mb-6">
+          <p class="text-xs font-body text-bark/50 uppercase tracking-widest mb-1">${formatted}</p>
+          <p class="font-display text-lg text-espresso">${ev.icon||''} ${evTitle}</p>
+          ${evSub?`<p class="text-xs font-body text-bark/60 mt-0.5">${evSub}</p>`:''}
+          <p class="text-xs font-body text-bark/50 mt-2">📍 Café Unido · ${t.doorsOpen}</p>
+        </div>
+        <p class="text-xs font-body text-bark/50 mb-5">${t.seeYou}</p>
+        <button id="doneBtn" class="rsvp-btn">${t.doneBtn}</button>
+      </div>
+    `;
+    document.getElementById('doneBtn').addEventListener('click', closeModal);
+    // Re-render calendar with updated counts
+    renderCalendar();
+  }
+
+  // ── Nav listeners ──────────────────────────────────────────
+  document.getElementById('modalClose').addEventListener('click', closeModal);
+  document.getElementById('modalOverlay').addEventListener('click', e => {
+    if (e.target===document.getElementById('modalOverlay')) closeModal();
+  });
+  document.getElementById('prevBtn').addEventListener('click', () => {
+    currentMonth--; if(currentMonth<0){currentMonth=11;currentYear--;} renderCalendar();
+  });
+  document.getElementById('nextBtn').addEventListener('click', () => {
+    currentMonth++; if(currentMonth>11){currentMonth=0;currentYear++;} renderCalendar();
+  });
+
+  // ── Init ───────────────────────────────────────────────────
+  updateStaticText();
+  renderCalendar();
+  renderEventTypes();
+</script>
+</body>
+</html>
